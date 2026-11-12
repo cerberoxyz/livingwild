@@ -1,7 +1,7 @@
 Mundo Vivo
 Mundo Vivo brings a living medieval-fantasy world to Minecraft: twelve interactive NPCs, five original creatures, two powerful bosses, four elemental dragons you can hatch, breed and ride, custom equipment, animated weapons, unique artifacts, and handcrafted structures. Raise dragons, discover Petronite, challenge bosses, and track down hidden structures with a custom compass.
 
-📖 Full guides, recipes and stats on the wiki: https://cerberoxyz.github.io/mundovivo
+📖 Full guides, recipes and stats on the wiki: https://cerberoxyz.github.io/livingwild
 
 Requires: Minecraft 26.3 · Fabric Loader 0.20.1+ · Fabric API · GeckoLib 5.5.7+ · Java 25
 
@@ -137,4 +137,4 @@ Optional compatibility with Entity Model Features, Punchy Moves and Do a Barrel 
 NPC trades are customizable through config/mundovivo.json.
 Medieval fantasy, original creatures, powerful bosses, elemental dragons and animated gameplay in one expanding experience.
 
-📖 More info: https://cerberoxyz.github.io/mundovivo
+📖 More info: [https://cerberoxyz.github.io/mundovivo](https://cerberoxyz.github.io/livingwild)
