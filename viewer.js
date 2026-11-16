@@ -13,8 +13,8 @@ function persp(f,asp,n,fa){var t=1/Math.tan(f/2),o=new Float32Array(16);o[0]=t/a
 function trans(x,y,z){return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,x,y,z,1])}
 function rotY(a){var c=Math.cos(a),s=Math.sin(a);return new Float32Array([c,0,-s,0,0,1,0,0,s,0,c,0,0,0,0,1])}
 function rotX(a){var c=Math.cos(a),s=Math.sin(a);return new Float32Array([1,0,0,0,0,c,s,0,0,-s,c,0,0,0,0,1])}
-var VS='attribute vec3 p;attribute vec2 t;attribute vec3 n;uniform mat4 m;uniform vec3 L;varying vec2 vT;varying float vS;void main(){vT=t;vS=0.58+0.42*max(dot(n,L),0.0);gl_Position=m*vec4(p,1.0);}';
-var FS='precision mediump float;varying vec2 vT;varying float vS;uniform sampler2D tx;void main(){vec4 c=texture2D(tx,vT);if(c.a<0.5)discard;gl_FragColor=vec4(c.rgb*vS,1.0);}';
+var VS='attribute vec3 p;attribute vec2 t;attribute vec3 n;uniform mat4 m;uniform vec3 L;uniform vec3 F;uniform vec3 V;varying vec2 vT;varying float vS;varying float vR;void main(){vT=t;float k=max(dot(n,L),0.0);float f=max(dot(n,F),0.0);vS=0.50+0.62*k+0.20*f;vR=pow(1.0-max(dot(n,V),0.0),3.0);gl_Position=m*vec4(p,1.0);}';
+var FS='precision mediump float;varying vec2 vT;varying float vS;varying float vR;uniform sampler2D tx;uniform vec3 RC;void main(){vec4 c=texture2D(tx,vT);if(c.a<0.5)discard;vec3 col=c.rgb*vS+RC*vR*0.55;gl_FragColor=vec4(col,1.0);}';
 function shader(gl,type,src){var s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s}
 function Viewer(host,opts){
   var self=this; this.host=host; this.cur=null; this.yaw=2.7; this.pitch=0.22; this.zoom=1; this.auto=true; this.idle=0; this.vis=false;
@@ -27,14 +27,25 @@ function Viewer(host,opts){
   if(!gl){host.classList.add('v3d-off');hint.textContent='The 3D view needs WebGL.';return}
   this.gl=gl;
   var pr=gl.createProgram();gl.attachShader(pr,shader(gl,gl.VERTEX_SHADER,VS));gl.attachShader(pr,shader(gl,gl.FRAGMENT_SHADER,FS));gl.linkProgram(pr);gl.useProgram(pr);this.pr=pr;
-  this.loc={p:gl.getAttribLocation(pr,'p'),t:gl.getAttribLocation(pr,'t'),n:gl.getAttribLocation(pr,'n'),m:gl.getUniformLocation(pr,'m'),L:gl.getUniformLocation(pr,'L')};
+  this.loc={p:gl.getAttribLocation(pr,'p'),t:gl.getAttribLocation(pr,'t'),n:gl.getAttribLocation(pr,'n'),m:gl.getUniformLocation(pr,'m'),L:gl.getUniformLocation(pr,'L'),F:gl.getUniformLocation(pr,'F'),V:gl.getUniformLocation(pr,'V'),RC:gl.getUniformLocation(pr,'RC')};
+  this.rim=[.2,.8,1];this.readAccent();
   gl.enable(gl.DEPTH_TEST);gl.clearColor(0,0,0,0);
   this.models=opts; this.cache={};
-  if(opts.length>1) opts.forEach(function(o,i){var b=document.createElement('button');b.type='button';b.textContent=o[1];b.onclick=function(){self.show(i)};tabsEl.appendChild(b)});
+  if(opts.length>1) opts.forEach(function(o,i){var b=document.createElement('button');b.type='button';b.textContent=o[1];b.onclick=function(){self.manualTab=true;self.ci=i;self.show(i)};tabsEl.appendChild(b)});
   else tabsEl.style.display='none';
   this.tabs=tabsEl;
+  var ctl=document.createElement('div');ctl.className='v3d-ctl';
+  var ic={rot:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>',
+          rst:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>',
+          fs:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>'};
+  function mk(h,t,f){var b=document.createElement('button');b.type='button';b.title=t;b.setAttribute('aria-label',t);b.innerHTML=h;b.onclick=function(e){e.stopPropagation();f(b)};ctl.appendChild(b);return b}
+  this.bRot=mk(ic.rot,'Auto-rotate',function(b){self.auto=!self.auto;self.idle=0;self.manual=!self.auto;b.classList.toggle('on',self.auto)});
+  mk(ic.rst,'Reset view',function(){self.zoom=1;self.pitch=.22;self.yaw=2.7;self.auto=true;self.manual=false;self.bRot.classList.add('on')});
+  if(host.requestFullscreen)mk(ic.fs,'Fullscreen',function(){if(document.fullscreenElement)document.exitFullscreen();else host.requestFullscreen()});
+  host.appendChild(ctl);this.bRot.classList.add('on');
+  if(host.getAttribute('data-cycle')&&opts.length>1){var cy=+host.getAttribute('data-cycle')||7000;this.ci=0;setInterval(function(){if(!self.vis||self.manualTab||document.hidden)return;self.ci=(self.ci+1)%opts.length;self.show(self.ci)},cy)}
   var drag=null;
-  cv.addEventListener('pointerdown',function(e){drag={x:e.clientX,y:e.clientY};cv.setPointerCapture(e.pointerId);self.auto=false;self.idle=0;cv.classList.add('grab')});
+  cv.addEventListener('pointerdown',function(e){hint.style.opacity=0;drag={x:e.clientX,y:e.clientY};cv.setPointerCapture(e.pointerId);self.auto=false;self.idle=0;self.manual=false;if(self.bRot)self.bRot.classList.remove('on');cv.classList.add('grab')});
   cv.addEventListener('pointermove',function(e){if(!drag)return;self.yaw+=(e.clientX-drag.x)*0.011;self.pitch=Math.max(-1.45,Math.min(1.45,self.pitch+(e.clientY-drag.y)*0.009));drag={x:e.clientX,y:e.clientY}});
   var up=function(){drag=null;self.idle=performance.now();cv.classList.remove('grab')};
   cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
@@ -44,6 +55,7 @@ function Viewer(host,opts){
   var io=('IntersectionObserver' in window)?new IntersectionObserver(function(en){self.vis=en[0].isIntersecting;if(self.vis&&!self.started){self.started=true;self.show(0)}if(self.vis)self.loop()},{rootMargin:'120px'}):null;
   if(io)io.observe(host);else{self.vis=true;self.started=true;self.show(0);self.loop()}
 }
+Viewer.prototype.readAccent=function(){try{var v=getComputedStyle(this.host).getPropertyValue('--ac-rgb').split(',').map(function(x){return parseFloat(x)/255});if(v.length===3&&!v.some(isNaN))this.rim=v}catch(e){}};
 Viewer.prototype.build=function(d){
   var gl=this.gl,q=d.q,nq=q.length/20,buf=new Float32Array(nq*6*8),o=0,mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9],V=[0,1,2,0,2,3];
   for(var i=0;i<nq;i++){
@@ -68,10 +80,10 @@ Viewer.prototype.show=function(i){
       img.onload=function(){m.tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,m.tex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
         gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-        if(self.cur===m)self.hint.textContent='Drag to rotate · scroll to zoom · double-click to reset'};
+        if(self.cur===m)self.hint.textContent='Drag · scroll to zoom · double-click to reset'};
       img.src=d.t}
     self.cur=m;self.zoom=1;
-    if(m.tex)self.hint.textContent='Drag to rotate · scroll to zoom · double-click to reset';
+    if(m.tex)self.hint.textContent='Drag · scroll to zoom · double-click to reset';
     self.loop();
   },function(){self.hint.textContent='Could not load the 3D model.'});
 };
@@ -84,7 +96,7 @@ Viewer.prototype.draw=function(t){
   var dpr=Math.min(window.devicePixelRatio||1,2),w=Math.round(cv.clientWidth*dpr),h=Math.round(cv.clientHeight*dpr);
   if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
   gl.viewport(0,0,w,h);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
-  if(!this.rm&&!this.auto&&this.idle&&performance.now()-this.idle>3500){this.auto=true;this.idle=0}
+  if(!this.rm&&!this.auto&&!this.manual&&this.idle&&performance.now()-this.idle>3500){this.auto=true;this.idle=0;if(this.bRot)this.bRot.classList.add('on')}
   if(this.auto)this.yaw+=0.009;
   var fov=0.62,dist=m.R/Math.sin(fov/2)*1.08/this.zoom;
   var ry=rotY(this.yaw),rx=rotX(this.pitch);
@@ -92,7 +104,9 @@ Viewer.prototype.draw=function(t){
   var mvp=mul(persp(fov,w/h,dist*0.05,dist*4),mv);
   var Lv=[-0.35,0.65,0.67],R=mul(rx,ry);
   var L=[R[0]*Lv[0]+R[1]*Lv[1]+R[2]*Lv[2],R[4]*Lv[0]+R[5]*Lv[1]+R[6]*Lv[2],R[8]*Lv[0]+R[9]*Lv[1]+R[10]*Lv[2]];
-  gl.useProgram(this.pr);gl.uniformMatrix4fv(this.loc.m,false,mvp);gl.uniform3fv(this.loc.L,new Float32Array(L));
+  var Fv=[0.7,0.15,0.45],Fl=[R[0]*Fv[0]+R[1]*Fv[1]+R[2]*Fv[2],R[4]*Fv[0]+R[5]*Fv[1]+R[6]*Fv[2],R[8]*Fv[0]+R[9]*Fv[1]+R[10]*Fv[2]];
+  var Vv=[0,0,1],Vm=[R[0]*Vv[0]+R[1]*Vv[1]+R[2]*Vv[2],R[4]*Vv[0]+R[5]*Vv[1]+R[6]*Vv[2],R[8]*Vv[0]+R[9]*Vv[1]+R[10]*Vv[2]];
+  gl.useProgram(this.pr);gl.uniformMatrix4fv(this.loc.m,false,mvp);gl.uniform3fv(this.loc.L,new Float32Array(L));gl.uniform3fv(this.loc.F,new Float32Array(Fl));gl.uniform3fv(this.loc.V,new Float32Array(Vm));gl.uniform3fv(this.loc.RC,new Float32Array(this.rim));
   gl.bindBuffer(gl.ARRAY_BUFFER,m.vb);
   gl.enableVertexAttribArray(this.loc.p);gl.vertexAttribPointer(this.loc.p,3,gl.FLOAT,false,32,0);
   gl.enableVertexAttribArray(this.loc.t);gl.vertexAttribPointer(this.loc.t,2,gl.FLOAT,false,32,12);
